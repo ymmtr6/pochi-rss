@@ -4,12 +4,14 @@
 
 import * as cheerio from 'cheerio';
 import type { SiteConfig, RSSItem } from '../config/types';
+import { parseJapaneseDate } from '../utils/date-parser';
 
 /**
  * 対象サイトをスクレイピングしてRSS記事アイテムを取得
  */
 export async function scrapeWebsite(
-  config: SiteConfig
+  config: SiteConfig,
+  cachedItems: RSSItem[] | null = null
 ): Promise<RSSItem[]> {
   try {
     // タイムアウト設定（10秒）
@@ -33,6 +35,15 @@ export async function scrapeWebsite(
     const $ = cheerio.load(html);
 
     const items: RSSItem[] = [];
+
+    // 既存アイテムのキャッシュをMapに変換（タイトル+リンクをキーにする）
+    const cachedItemsMap = new Map<string, RSSItem>();
+    if (cachedItems) {
+      for (const cachedItem of cachedItems) {
+        const key = `${cachedItem.title}|||${cachedItem.link}`;
+        cachedItemsMap.set(key, cachedItem);
+      }
+    }
 
     // 記事一覧を取得
     $(config.selectors.items).each((_, element) => {
@@ -64,43 +75,68 @@ export async function scrapeWebsite(
         return;
       }
 
-      const item: RSSItem = {
-        title,
-        link,
-      };
-
       // 説明（オプション）
+      let description: string | undefined;
       if (config.selectors.description) {
-        const description = $item
+        const desc = $item
           .find(config.selectors.description)
           .text()
           .trim();
-        if (description) {
-          item.description = description;
+        if (desc) {
+          description = desc;
         }
       }
 
-      // 公開日（オプション）
+      // 公開日（必須、フォールバック処理あり）
+      let pubDate: string | undefined;
       if (config.selectors.pubDate) {
-        const pubDate = $item
+        const extracted = $item
           .find(config.selectors.pubDate)
           .text()
           .trim();
-        if (pubDate) {
-          item.pubDate = pubDate;
+        if (extracted) {
+          // 日本語日付をパースしてISO形式に変換
+          const parsed = parseJapaneseDate(extracted);
+          if (parsed) {
+            pubDate = parsed;
+          }
+        }
+      }
+
+      // pubDateが取れなかった場合のフォールバック処理
+      if (!pubDate) {
+        // 既存キャッシュから同名アイテムを探す
+        const cacheKey = `${title}|||${link}`;
+        const cachedItem = cachedItemsMap.get(cacheKey);
+
+        if (cachedItem) {
+          // キャッシュに同名アイテムがあればそのpubDateを使用
+          pubDate = cachedItem.pubDate;
+        } else {
+          // キャッシュにもない場合は現在時刻を使用
+          pubDate = new Date().toISOString();
         }
       }
 
       // 著者（オプション）
+      let author: string | undefined;
       if (config.selectors.author) {
-        const author = $item
+        const auth = $item
           .find(config.selectors.author)
           .text()
           .trim();
-        if (author) {
-          item.author = author;
+        if (auth) {
+          author = auth;
         }
       }
+
+      const item: RSSItem = {
+        title,
+        link,
+        description,
+        pubDate,
+        author,
+      };
 
       items.push(item);
     });

@@ -9,7 +9,8 @@
       "Bash(curl:*)",
       "Bash(time curl:*)",
       "Bash(./test-local.sh:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(find:*)"
     ]
   }
 }

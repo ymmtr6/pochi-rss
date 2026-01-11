@@ -11,7 +11,11 @@ import {
   deleteSiteConfig,
   validateSiteConfig,
 } from '../services/config-manager';
-import { deleteRSSCache } from '../services/cache';
+import { deleteRSSCache, deleteRSSItemsCache } from '../services/cache';
+import {
+  testSelectors,
+  type SelectorTestRequest,
+} from '../services/selector-test';
 import type { SiteConfig } from '../config/types';
 
 const admin = new Hono<{ Bindings: Env }>();
@@ -150,8 +154,9 @@ admin.put('/sites/:site_id', async (c) => {
     // 設定を保存
     await saveSiteConfig(c.env.RSS_STORE, updated);
 
-    // 関連キャッシュを削除
+    // 関連キャッシュを削除（RSSとアイテム両方）
     await deleteRSSCache(c.env.RSS_STORE, siteId);
+    await deleteRSSItemsCache(c.env.RSS_STORE, siteId);
 
     return c.json({
       message: 'Site config updated successfully',
@@ -192,8 +197,9 @@ admin.delete('/sites/:site_id', async (c) => {
     // 設定を削除
     await deleteSiteConfig(c.env.RSS_STORE, siteId);
 
-    // 関連キャッシュを削除
+    // 関連キャッシュを削除（RSSとアイテム両方）
     await deleteRSSCache(c.env.RSS_STORE, siteId);
+    await deleteRSSItemsCache(c.env.RSS_STORE, siteId);
 
     return c.json({
       message: 'Site config deleted successfully',
@@ -205,6 +211,47 @@ admin.delete('/sites/:site_id', async (c) => {
       {
         error: 'Internal Server Error',
         message: 'Failed to delete site config',
+      },
+      500
+    );
+  }
+});
+
+/**
+ * POST /api/test-selectors
+ * セレクタをテストして抽出結果を返す
+ */
+admin.post('/test-selectors', async (c) => {
+  try {
+    const body = await c.req.json();
+
+    // バリデーション
+    if (!body.url || !body.selectors) {
+      return c.json(
+        {
+          error: 'Bad Request',
+          message: 'Missing required fields: url and selectors',
+        },
+        400
+      );
+    }
+
+    const request: SelectorTestRequest = body;
+
+    // セレクタテスト実行
+    const items = await testSelectors(request);
+
+    return c.json({
+      success: true,
+      items,
+    });
+  } catch (error) {
+    console.error('Error testing selectors:', error);
+    return c.json(
+      {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        items: [],
       },
       500
     );

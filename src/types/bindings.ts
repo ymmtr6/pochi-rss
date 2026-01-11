@@ -8,4 +8,11 @@ export interface Env {
 
   // シークレット
   API_KEY: string;
+
+  // Assets (管理画面の静的ファイル配信)
+  ASSETS?: Fetcher;
+
+  // Workers Sites
+  __STATIC_CONTENT?: KVNamespace;
+  __STATIC_CONTENT_MANIFEST?: string;
 }

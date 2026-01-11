@@ -29,12 +29,10 @@ export function generateRSS(feed: RSSFeed): string {
       xml += `      <description>${escapeXml(item.description)}</description>\n`;
     }
 
-    if (item.pubDate) {
-      // 日付が既にRFC 2822形式でない場合は変換を試みる
-      const date = new Date(item.pubDate);
-      const pubDate = isNaN(date.getTime()) ? item.pubDate : date.toUTCString();
-      xml += `      <pubDate>${escapeXml(pubDate)}</pubDate>\n`;
-    }
+    // 日付が既にRFC 2822形式でない場合は変換を試みる
+    const date = new Date(item.pubDate);
+    const pubDate = isNaN(date.getTime()) ? item.pubDate : date.toUTCString();
+    xml += `      <pubDate>${escapeXml(pubDate)}</pubDate>\n`;
 
     if (item.author) {
       xml += `      <author>${escapeXml(item.author)}</author>\n`;

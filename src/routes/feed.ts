@@ -5,7 +5,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types/bindings';
 import { getSiteConfig, getAllSiteConfigs } from '../services/config-manager';
-import { getRSSCache, setRSSCache } from '../services/cache';
+import { getRSSCache, setRSSCache, getRSSItemsCache, setRSSItemsCache } from '../services/cache';
 import { scrapeWebsite } from '../services/scraper';
 import { generateRSS } from '../services/rss-generator';
 
@@ -40,8 +40,11 @@ feed.get('/:site_id', async (c) => {
       });
     }
 
+    // 既存アイテムキャッシュを取得（pubDateのフォールバック用）
+    const cachedItems = await getRSSItemsCache(c.env.RSS_STORE, siteId);
+
     // スクレイピング実行
-    const items = await scrapeWebsite(config);
+    const items = await scrapeWebsite(config, cachedItems);
 
     // RSS生成
     const rss = generateRSS({
@@ -51,8 +54,9 @@ feed.get('/:site_id', async (c) => {
       items,
     });
 
-    // キャッシュに保存
+    // キャッシュに保存（RSSとアイテム両方）
     await setRSSCache(c.env.RSS_STORE, siteId, rss, config.cacheTTL);
+    await setRSSItemsCache(c.env.RSS_STORE, siteId, items, config.cacheTTL);
 
     return c.body(rss, 200, {
       'Content-Type': 'application/rss+xml; charset=utf-8',
