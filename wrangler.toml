@@ -1,0 +1,18 @@
+name = "pochi-rss"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+# KVネームスペース設定
+# デプロイ前に wrangler kv:namespace create RSS_STORE を実行してください
+[[kv_namespaces]]
+binding = "RSS_STORE"
+id = "YOUR_KV_NAMESPACE_ID"
+
+# 開発環境用KVネームスペース
+# デプロイ前に wrangler kv:namespace create RSS_STORE --preview を実行してください
+preview_id = "YOUR_PREVIEW_KV_NAMESPACE_ID"
+
+# シークレット設定（デプロイ後に設定）
+# wrangler secret put API_KEY を実行してAPIキーを設定してください
+# [vars]
+# API_KEY = "your-api-key-here"  # 開発環境用（本番環境ではシークレットを使用）

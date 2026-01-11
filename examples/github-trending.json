@@ -1,0 +1,17 @@
+{
+  "id": "github-trending",
+  "name": "GitHub Trending Repositories",
+  "url": "https://github.com/trending",
+  "cacheTTL": 7200,
+  "selectors": {
+    "items": "article.Box-row",
+    "title": "h2 a",
+    "link": "h2 a",
+    "description": "p.col-9"
+  },
+  "feed": {
+    "title": "GitHub Trending",
+    "description": "Trending repositories on GitHub",
+    "link": "https://github.com/trending"
+  }
+}

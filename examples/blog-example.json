@@ -1,0 +1,19 @@
+{
+  "id": "example-blog",
+  "name": "Example Blog",
+  "url": "https://example.com/blog",
+  "cacheTTL": 3600,
+  "selectors": {
+    "items": "article.blog-post",
+    "title": "h2.entry-title > a",
+    "link": "h2.entry-title > a",
+    "description": "div.entry-summary",
+    "pubDate": "time.published",
+    "author": "span.author-name"
+  },
+  "feed": {
+    "title": "Example Blog RSS",
+    "description": "Latest articles from Example Blog",
+    "link": "https://example.com/blog"
+  }
+}

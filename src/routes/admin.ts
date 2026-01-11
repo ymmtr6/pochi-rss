@@ -1,0 +1,214 @@
+/**
+ * 管理用APIエンドポイント
+ */
+
+import { Hono } from 'hono';
+import type { Env } from '../types/bindings';
+import { authMiddleware } from '../middlewares/auth';
+import {
+  getSiteConfig,
+  saveSiteConfig,
+  deleteSiteConfig,
+  validateSiteConfig,
+} from '../services/config-manager';
+import { deleteRSSCache } from '../services/cache';
+import type { SiteConfig } from '../config/types';
+
+const admin = new Hono<{ Bindings: Env }>();
+
+// すべてのエンドポイントに認証を適用
+admin.use('/*', authMiddleware);
+
+/**
+ * POST /api/sites
+ * 新しいサイト設定を追加
+ */
+admin.post('/sites', async (c) => {
+  try {
+    const body = await c.req.json();
+
+    // バリデーション
+    if (!validateSiteConfig(body)) {
+      return c.json(
+        {
+          error: 'Bad Request',
+          message: 'Invalid site configuration',
+        },
+        400
+      );
+    }
+
+    const config: SiteConfig = body;
+
+    // 既存の設定をチェック
+    const existing = await getSiteConfig(c.env.RSS_STORE, config.id);
+    if (existing) {
+      return c.json(
+        {
+          error: 'Conflict',
+          message: `Site config already exists: ${config.id}`,
+        },
+        409
+      );
+    }
+
+    // 設定を保存
+    await saveSiteConfig(c.env.RSS_STORE, config);
+
+    return c.json(
+      {
+        message: 'Site config created successfully',
+        id: config.id,
+      },
+      201
+    );
+  } catch (error) {
+    console.error('Error creating site config:', error);
+    return c.json(
+      {
+        error: 'Internal Server Error',
+        message: 'Failed to create site config',
+      },
+      500
+    );
+  }
+});
+
+/**
+ * GET /api/sites/:site_id
+ * 特定のサイト設定を取得
+ */
+admin.get('/sites/:site_id', async (c) => {
+  const siteId = c.req.param('site_id');
+
+  try {
+    const config = await getSiteConfig(c.env.RSS_STORE, siteId);
+
+    if (!config) {
+      return c.json(
+        {
+          error: 'Not Found',
+          message: `Site config not found: ${siteId}`,
+        },
+        404
+      );
+    }
+
+    return c.json(config);
+  } catch (error) {
+    console.error(`Error fetching site config ${siteId}:`, error);
+    return c.json(
+      {
+        error: 'Internal Server Error',
+        message: 'Failed to fetch site config',
+      },
+      500
+    );
+  }
+});
+
+/**
+ * PUT /api/sites/:site_id
+ * サイト設定を更新
+ */
+admin.put('/sites/:site_id', async (c) => {
+  const siteId = c.req.param('site_id');
+
+  try {
+    const body = await c.req.json();
+
+    // 既存の設定を取得
+    const existing = await getSiteConfig(c.env.RSS_STORE, siteId);
+    if (!existing) {
+      return c.json(
+        {
+          error: 'Not Found',
+          message: `Site config not found: ${siteId}`,
+        },
+        404
+      );
+    }
+
+    // 設定をマージ
+    const updated: SiteConfig = {
+      ...existing,
+      ...body,
+      id: siteId, // IDは変更不可
+    };
+
+    // バリデーション
+    if (!validateSiteConfig(updated)) {
+      return c.json(
+        {
+          error: 'Bad Request',
+          message: 'Invalid site configuration',
+        },
+        400
+      );
+    }
+
+    // 設定を保存
+    await saveSiteConfig(c.env.RSS_STORE, updated);
+
+    // 関連キャッシュを削除
+    await deleteRSSCache(c.env.RSS_STORE, siteId);
+
+    return c.json({
+      message: 'Site config updated successfully',
+      id: siteId,
+    });
+  } catch (error) {
+    console.error(`Error updating site config ${siteId}:`, error);
+    return c.json(
+      {
+        error: 'Internal Server Error',
+        message: 'Failed to update site config',
+      },
+      500
+    );
+  }
+});
+
+/**
+ * DELETE /api/sites/:site_id
+ * サイト設定を削除
+ */
+admin.delete('/sites/:site_id', async (c) => {
+  const siteId = c.req.param('site_id');
+
+  try {
+    // 既存の設定を確認
+    const existing = await getSiteConfig(c.env.RSS_STORE, siteId);
+    if (!existing) {
+      return c.json(
+        {
+          error: 'Not Found',
+          message: `Site config not found: ${siteId}`,
+        },
+        404
+      );
+    }
+
+    // 設定を削除
+    await deleteSiteConfig(c.env.RSS_STORE, siteId);
+
+    // 関連キャッシュを削除
+    await deleteRSSCache(c.env.RSS_STORE, siteId);
+
+    return c.json({
+      message: 'Site config deleted successfully',
+      id: siteId,
+    });
+  } catch (error) {
+    console.error(`Error deleting site config ${siteId}:`, error);
+    return c.json(
+      {
+        error: 'Internal Server Error',
+        message: 'Failed to delete site config',
+      },
+      500
+    );
+  }
+});
+
+export default admin;

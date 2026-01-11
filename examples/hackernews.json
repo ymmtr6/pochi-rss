@@ -1,0 +1,16 @@
+{
+  "id": "hackernews",
+  "name": "Hacker News Front Page",
+  "url": "https://news.ycombinator.com/",
+  "cacheTTL": 1800,
+  "selectors": {
+    "items": "tr.athing",
+    "title": "td.title > span > a",
+    "link": "td.title > span > a"
+  },
+  "feed": {
+    "title": "Hacker News",
+    "description": "Hacker News front page stories",
+    "link": "https://news.ycombinator.com/"
+  }
+}
