@@ -44,6 +44,11 @@ export async function scrapeWebsite(
       // リンクを取得
       let link = $item.find(config.selectors.link).attr('href') || '';
 
+      // linkが見つからない場合、item自体がリンク要素かチェック
+      if (!link) {
+        link = $item.attr('href') || '';
+      }
+
       // 相対URLを絶対URLに変換
       if (link && !link.startsWith('http')) {
         const baseUrl = new URL(config.url);
