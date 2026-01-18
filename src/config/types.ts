@@ -69,3 +69,29 @@ export interface RSSFeed {
   link: string;
   items: RSSItem[];
 }
+
+/**
+ * エラーコード
+ */
+export enum ErrorCode {
+  SCRAPING_FAILED = 'scraping_failed',
+  CACHE_ERROR = 'cache_error',
+  INVALID_CONFIG = 'invalid_config',
+  CONFIG_NOT_FOUND = 'config_not_found',
+  CONFIG_ALREADY_EXISTS = 'config_already_exists',
+  UNAUTHORIZED = 'unauthorized',
+  BAD_REQUEST = 'bad_request',
+  INTERNAL_ERROR = 'internal_error',
+}
+
+/**
+ * APIエラーレスポンス
+ */
+export interface APIErrorResponse {
+  error: string;
+  message: string;
+  code: ErrorCode;
+  timestamp: string;
+  requestId?: string;
+  details?: string[];
+}

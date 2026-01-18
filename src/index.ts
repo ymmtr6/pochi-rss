@@ -9,7 +9,10 @@ import { getAssetFromKV } from '@cloudflare/kv-asset-handler';
 import type { Env } from './types/bindings';
 import feed from './routes/feed';
 import admin from './routes/admin';
+import health from './routes/health';
 import { getAllSiteConfigs } from './services/config-manager';
+import { logger } from './utils/logger';
+import { ErrorCode } from './config/types';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -51,11 +54,15 @@ app.get('/sites', async (c) => {
       count: sites.length,
     });
   } catch (error) {
-    console.error('Error fetching sites:', error);
+    logger.error('Error fetching sites', error as Error, {
+      endpoint: '/sites',
+    });
     return c.json(
       {
         error: 'Internal Server Error',
         message: 'Failed to fetch sites',
+        code: ErrorCode.INTERNAL_ERROR,
+        timestamp: new Date().toISOString(),
       },
       500
     );
@@ -67,6 +74,9 @@ app.route('/feed', feed);
 
 // 管理用APIエンドポイント
 app.route('/api', admin);
+
+// ヘルスチェックエンドポイント
+app.route('/health', health);
 
 // 管理画面配信エンドポイント（Workers Sites）
 const serveAdmin = async (c: Context<{ Bindings: Env }>) => {
@@ -133,7 +143,9 @@ const serveAdmin = async (c: Context<{ Bindings: Env }>) => {
 
     return asset;
   } catch (error) {
-    console.error('Error serving admin UI:', error);
+    logger.error('Error serving admin UI', error as Error, {
+      url: c.req.url,
+    });
     return c.notFound();
   }
 };

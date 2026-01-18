@@ -5,11 +5,15 @@
 import { Hono } from 'hono';
 import type { Env } from '../types/bindings';
 import { authMiddleware } from '../middlewares/auth';
+import { bodyLimit } from '../middlewares/body-limit';
 import {
   getSiteConfig,
   saveSiteConfig,
   deleteSiteConfig,
   validateSiteConfig,
+  validateSiteConfigDetailed,
+  isValidUrl,
+  isValidSelector,
 } from '../services/config-manager';
 import { deleteRSSCache, deleteRSSItemsCache } from '../services/cache';
 import {
@@ -17,11 +21,18 @@ import {
   type SelectorTestRequest,
 } from '../services/selector-test';
 import type { SiteConfig } from '../config/types';
+import { logger } from '../utils/logger';
+import { ErrorCode } from '../config/types';
 
 const admin = new Hono<{ Bindings: Env }>();
 
 // すべてのエンドポイントに認証を適用
 admin.use('/*', authMiddleware);
+
+// POST/PUTエンドポイントにボディサイズ制限を適用（10KB）
+admin.use('/sites', bodyLimit(10 * 1024));
+admin.use('/sites/*', bodyLimit(10 * 1024));
+admin.use('/test-selectors', bodyLimit(10 * 1024));
 
 /**
  * POST /api/sites
@@ -31,12 +42,14 @@ admin.post('/sites', async (c) => {
   try {
     const body = await c.req.json();
 
-    // バリデーション
-    if (!validateSiteConfig(body)) {
+    // 詳細なバリデーション
+    const validation = validateSiteConfigDetailed(body);
+    if (!validation.valid) {
       return c.json(
         {
           error: 'Bad Request',
           message: 'Invalid site configuration',
+          details: validation.errors,
         },
         400
       );
@@ -47,10 +60,15 @@ admin.post('/sites', async (c) => {
     // 既存の設定をチェック
     const existing = await getSiteConfig(c.env.RSS_STORE, config.id);
     if (existing) {
+      logger.warn('Attempted to create existing site config', {
+        siteId: config.id,
+      });
       return c.json(
         {
           error: 'Conflict',
           message: `Site config already exists: ${config.id}`,
+          code: ErrorCode.CONFIG_ALREADY_EXISTS,
+          timestamp: new Date().toISOString(),
         },
         409
       );
@@ -67,11 +85,15 @@ admin.post('/sites', async (c) => {
       201
     );
   } catch (error) {
-    console.error('Error creating site config:', error);
+    logger.error('Error creating site config', error as Error, {
+      endpoint: 'POST /api/sites',
+    });
     return c.json(
       {
         error: 'Internal Server Error',
         message: 'Failed to create site config',
+        code: ErrorCode.INTERNAL_ERROR,
+        timestamp: new Date().toISOString(),
       },
       500
     );
@@ -100,11 +122,16 @@ admin.get('/sites/:site_id', async (c) => {
 
     return c.json(config);
   } catch (error) {
-    console.error(`Error fetching site config ${siteId}:`, error);
+    logger.error(`Error fetching site config ${siteId}`, error as Error, {
+      siteId,
+      endpoint: `GET /api/sites/${siteId}`,
+    });
     return c.json(
       {
         error: 'Internal Server Error',
         message: 'Failed to fetch site config',
+        code: ErrorCode.INTERNAL_ERROR,
+        timestamp: new Date().toISOString(),
       },
       500
     );
@@ -140,12 +167,14 @@ admin.put('/sites/:site_id', async (c) => {
       id: siteId, // IDは変更不可
     };
 
-    // バリデーション
-    if (!validateSiteConfig(updated)) {
+    // 詳細なバリデーション
+    const validation = validateSiteConfigDetailed(updated);
+    if (!validation.valid) {
       return c.json(
         {
           error: 'Bad Request',
           message: 'Invalid site configuration',
+          details: validation.errors,
         },
         400
       );
@@ -163,11 +192,16 @@ admin.put('/sites/:site_id', async (c) => {
       id: siteId,
     });
   } catch (error) {
-    console.error(`Error updating site config ${siteId}:`, error);
+    logger.error(`Error updating site config ${siteId}`, error as Error, {
+      siteId,
+      endpoint: `PUT /api/sites/${siteId}`,
+    });
     return c.json(
       {
         error: 'Internal Server Error',
         message: 'Failed to update site config',
+        code: ErrorCode.INTERNAL_ERROR,
+        timestamp: new Date().toISOString(),
       },
       500
     );
@@ -206,11 +240,16 @@ admin.delete('/sites/:site_id', async (c) => {
       id: siteId,
     });
   } catch (error) {
-    console.error(`Error deleting site config ${siteId}:`, error);
+    logger.error(`Error deleting site config ${siteId}`, error as Error, {
+      siteId,
+      endpoint: `DELETE /api/sites/${siteId}`,
+    });
     return c.json(
       {
         error: 'Internal Server Error',
         message: 'Failed to delete site config',
+        code: ErrorCode.INTERNAL_ERROR,
+        timestamp: new Date().toISOString(),
       },
       500
     );
@@ -236,6 +275,58 @@ admin.post('/test-selectors', async (c) => {
       );
     }
 
+    // URLの検証
+    if (!isValidUrl(body.url)) {
+      return c.json(
+        {
+          error: 'Bad Request',
+          message: 'Invalid URL',
+          details: ['url must be a valid HTTP/HTTPS URL'],
+        },
+        400
+      );
+    }
+
+    // セレクタの検証
+    const selectorErrors: string[] = [];
+    if (typeof body.selectors !== 'object' || body.selectors === null) {
+      selectorErrors.push('selectors must be an object');
+    } else {
+      const required = ['items', 'title', 'link'];
+      for (const field of required) {
+        if (typeof body.selectors[field] !== 'string') {
+          selectorErrors.push(`selectors.${field} is required and must be a string`);
+        } else if (!isValidSelector(body.selectors[field])) {
+          selectorErrors.push(`selectors.${field} is not a valid CSS selector`);
+        }
+      }
+
+      // オプションセレクタの検証
+      const optional = ['description', 'pubDate', 'author'];
+      for (const field of optional) {
+        if (
+          body.selectors[field] !== undefined &&
+          typeof body.selectors[field] === 'string' &&
+          body.selectors[field].length > 0
+        ) {
+          if (!isValidSelector(body.selectors[field])) {
+            selectorErrors.push(`selectors.${field} is not a valid CSS selector`);
+          }
+        }
+      }
+    }
+
+    if (selectorErrors.length > 0) {
+      return c.json(
+        {
+          error: 'Bad Request',
+          message: 'Invalid selectors',
+          details: selectorErrors,
+        },
+        400
+      );
+    }
+
     const request: SelectorTestRequest = body;
 
     // セレクタテスト実行
@@ -246,7 +337,9 @@ admin.post('/test-selectors', async (c) => {
       items,
     });
   } catch (error) {
-    console.error('Error testing selectors:', error);
+    logger.error('Error testing selectors', error as Error, {
+      endpoint: 'POST /api/test-selectors',
+    });
     return c.json(
       {
         success: false,
