@@ -5,6 +5,7 @@
 import * as cheerio from 'cheerio';
 import type { SiteConfig, RSSItem } from '../config/types';
 import { parseJapaneseDate } from '../utils/date-parser';
+import { isValidUrl } from './config-manager';
 
 /**
  * 対象サイトをスクレイピングしてRSS記事アイテムを取得
@@ -14,6 +15,11 @@ export async function scrapeWebsite(
   cachedItems: RSSItem[] | null = null
 ): Promise<RSSItem[]> {
   try {
+    // URLの形式検証
+    if (!isValidUrl(config.url)) {
+      throw new Error('Invalid URL format');
+    }
+
     // タイムアウト設定（10秒）
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);

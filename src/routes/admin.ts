@@ -5,6 +5,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types/bindings';
 import { authMiddleware } from '../middlewares/auth';
+import { bodyLimit } from '../middlewares/body-limit';
 import {
   getSiteConfig,
   saveSiteConfig,
@@ -25,6 +26,11 @@ const admin = new Hono<{ Bindings: Env }>();
 
 // すべてのエンドポイントに認証を適用
 admin.use('/*', authMiddleware);
+
+// POST/PUTエンドポイントにボディサイズ制限を適用（10KB）
+admin.use('/sites', bodyLimit(10 * 1024));
+admin.use('/sites/*', bodyLimit(10 * 1024));
+admin.use('/test-selectors', bodyLimit(10 * 1024));
 
 /**
  * POST /api/sites
