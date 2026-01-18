@@ -9,6 +9,7 @@ import { getAssetFromKV } from '@cloudflare/kv-asset-handler';
 import type { Env } from './types/bindings';
 import feed from './routes/feed';
 import admin from './routes/admin';
+import health from './routes/health';
 import { getAllSiteConfigs } from './services/config-manager';
 import { logger } from './utils/logger';
 import { ErrorCode } from './config/types';
@@ -73,6 +74,9 @@ app.route('/feed', feed);
 
 // 管理用APIエンドポイント
 app.route('/api', admin);
+
+// ヘルスチェックエンドポイント
+app.route('/health', health);
 
 // 管理画面配信エンドポイント（Workers Sites）
 const serveAdmin = async (c: Context<{ Bindings: Env }>) => {

@@ -10,6 +10,7 @@ import { scrapeWebsite } from '../services/scraper';
 import { generateRSS } from '../services/rss-generator';
 import { logger } from '../utils/logger';
 import { ErrorCode } from '../config/types';
+import { metrics } from '../utils/metrics';
 
 const feed = new Hono<{ Bindings: Env }>();
 
@@ -19,6 +20,9 @@ const feed = new Hono<{ Bindings: Env }>();
  */
 feed.get('/:site_id', async (c) => {
   const siteId = c.req.param('site_id');
+
+  // リクエストを記録
+  metrics.recordRequest();
 
   try {
     // サイト設定を取得
@@ -43,16 +47,26 @@ feed.get('/:site_id', async (c) => {
     // キャッシュを確認
     const cached = await getRSSCache(c.env.RSS_STORE, siteId);
     if (cached) {
+      // キャッシュヒットを記録
+      metrics.recordCacheAccess(siteId, true);
       return c.body(cached, 200, {
         'Content-Type': 'application/rss+xml; charset=utf-8',
       });
     }
 
+    // キャッシュミスを記録
+    metrics.recordCacheAccess(siteId, false);
+
     // 既存アイテムキャッシュを取得（pubDateのフォールバック用）
     const cachedItems = await getRSSItemsCache(c.env.RSS_STORE, siteId);
 
-    // スクレイピング実行
+    // スクレイピング実行（時間計測）
+    const startTime = Date.now();
     const items = await scrapeWebsite(config, cachedItems);
+    const scrapingDuration = Date.now() - startTime;
+
+    // スクレイピング時間を記録
+    metrics.recordScrapingDuration(siteId, scrapingDuration);
 
     // RSS生成
     const rss = generateRSS({
@@ -70,6 +84,9 @@ feed.get('/:site_id', async (c) => {
       'Content-Type': 'application/rss+xml; charset=utf-8',
     });
   } catch (error) {
+    // エラーを記録
+    metrics.recordError();
+
     logger.error(`Error generating feed for ${siteId}`, error as Error, {
       siteId,
       endpoint: `/feed/${siteId}`,
