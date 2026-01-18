@@ -10,6 +10,9 @@ import {
   saveSiteConfig,
   deleteSiteConfig,
   validateSiteConfig,
+  validateSiteConfigDetailed,
+  isValidUrl,
+  isValidSelector,
 } from '../services/config-manager';
 import { deleteRSSCache, deleteRSSItemsCache } from '../services/cache';
 import {
@@ -31,12 +34,14 @@ admin.post('/sites', async (c) => {
   try {
     const body = await c.req.json();
 
-    // バリデーション
-    if (!validateSiteConfig(body)) {
+    // 詳細なバリデーション
+    const validation = validateSiteConfigDetailed(body);
+    if (!validation.valid) {
       return c.json(
         {
           error: 'Bad Request',
           message: 'Invalid site configuration',
+          details: validation.errors,
         },
         400
       );
@@ -140,12 +145,14 @@ admin.put('/sites/:site_id', async (c) => {
       id: siteId, // IDは変更不可
     };
 
-    // バリデーション
-    if (!validateSiteConfig(updated)) {
+    // 詳細なバリデーション
+    const validation = validateSiteConfigDetailed(updated);
+    if (!validation.valid) {
       return c.json(
         {
           error: 'Bad Request',
           message: 'Invalid site configuration',
+          details: validation.errors,
         },
         400
       );
@@ -231,6 +238,58 @@ admin.post('/test-selectors', async (c) => {
         {
           error: 'Bad Request',
           message: 'Missing required fields: url and selectors',
+        },
+        400
+      );
+    }
+
+    // URLの検証
+    if (!isValidUrl(body.url)) {
+      return c.json(
+        {
+          error: 'Bad Request',
+          message: 'Invalid URL',
+          details: ['url must be a valid HTTP/HTTPS URL'],
+        },
+        400
+      );
+    }
+
+    // セレクタの検証
+    const selectorErrors: string[] = [];
+    if (typeof body.selectors !== 'object' || body.selectors === null) {
+      selectorErrors.push('selectors must be an object');
+    } else {
+      const required = ['items', 'title', 'link'];
+      for (const field of required) {
+        if (typeof body.selectors[field] !== 'string') {
+          selectorErrors.push(`selectors.${field} is required and must be a string`);
+        } else if (!isValidSelector(body.selectors[field])) {
+          selectorErrors.push(`selectors.${field} is not a valid CSS selector`);
+        }
+      }
+
+      // オプションセレクタの検証
+      const optional = ['description', 'pubDate', 'author'];
+      for (const field of optional) {
+        if (
+          body.selectors[field] !== undefined &&
+          typeof body.selectors[field] === 'string' &&
+          body.selectors[field].length > 0
+        ) {
+          if (!isValidSelector(body.selectors[field])) {
+            selectorErrors.push(`selectors.${field} is not a valid CSS selector`);
+          }
+        }
+      }
+    }
+
+    if (selectorErrors.length > 0) {
+      return c.json(
+        {
+          error: 'Bad Request',
+          message: 'Invalid selectors',
+          details: selectorErrors,
         },
         400
       );
