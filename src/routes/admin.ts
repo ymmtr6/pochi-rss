@@ -21,6 +21,8 @@ import {
   type SelectorTestRequest,
 } from '../services/selector-test';
 import type { SiteConfig } from '../config/types';
+import { logger } from '../utils/logger';
+import { ErrorCode } from '../config/types';
 
 const admin = new Hono<{ Bindings: Env }>();
 
@@ -58,10 +60,15 @@ admin.post('/sites', async (c) => {
     // 既存の設定をチェック
     const existing = await getSiteConfig(c.env.RSS_STORE, config.id);
     if (existing) {
+      logger.warn('Attempted to create existing site config', {
+        siteId: config.id,
+      });
       return c.json(
         {
           error: 'Conflict',
           message: `Site config already exists: ${config.id}`,
+          code: ErrorCode.CONFIG_ALREADY_EXISTS,
+          timestamp: new Date().toISOString(),
         },
         409
       );
@@ -78,11 +85,15 @@ admin.post('/sites', async (c) => {
       201
     );
   } catch (error) {
-    console.error('Error creating site config:', error);
+    logger.error('Error creating site config', error as Error, {
+      endpoint: 'POST /api/sites',
+    });
     return c.json(
       {
         error: 'Internal Server Error',
         message: 'Failed to create site config',
+        code: ErrorCode.INTERNAL_ERROR,
+        timestamp: new Date().toISOString(),
       },
       500
     );
@@ -111,11 +122,16 @@ admin.get('/sites/:site_id', async (c) => {
 
     return c.json(config);
   } catch (error) {
-    console.error(`Error fetching site config ${siteId}:`, error);
+    logger.error(`Error fetching site config ${siteId}`, error as Error, {
+      siteId,
+      endpoint: `GET /api/sites/${siteId}`,
+    });
     return c.json(
       {
         error: 'Internal Server Error',
         message: 'Failed to fetch site config',
+        code: ErrorCode.INTERNAL_ERROR,
+        timestamp: new Date().toISOString(),
       },
       500
     );
@@ -176,11 +192,16 @@ admin.put('/sites/:site_id', async (c) => {
       id: siteId,
     });
   } catch (error) {
-    console.error(`Error updating site config ${siteId}:`, error);
+    logger.error(`Error updating site config ${siteId}`, error as Error, {
+      siteId,
+      endpoint: `PUT /api/sites/${siteId}`,
+    });
     return c.json(
       {
         error: 'Internal Server Error',
         message: 'Failed to update site config',
+        code: ErrorCode.INTERNAL_ERROR,
+        timestamp: new Date().toISOString(),
       },
       500
     );
@@ -219,11 +240,16 @@ admin.delete('/sites/:site_id', async (c) => {
       id: siteId,
     });
   } catch (error) {
-    console.error(`Error deleting site config ${siteId}:`, error);
+    logger.error(`Error deleting site config ${siteId}`, error as Error, {
+      siteId,
+      endpoint: `DELETE /api/sites/${siteId}`,
+    });
     return c.json(
       {
         error: 'Internal Server Error',
         message: 'Failed to delete site config',
+        code: ErrorCode.INTERNAL_ERROR,
+        timestamp: new Date().toISOString(),
       },
       500
     );
@@ -311,7 +337,9 @@ admin.post('/test-selectors', async (c) => {
       items,
     });
   } catch (error) {
-    console.error('Error testing selectors:', error);
+    logger.error('Error testing selectors', error as Error, {
+      endpoint: 'POST /api/test-selectors',
+    });
     return c.json(
       {
         success: false,

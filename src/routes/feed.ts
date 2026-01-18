@@ -8,6 +8,8 @@ import { getSiteConfig, getAllSiteConfigs } from '../services/config-manager';
 import { getRSSCache, setRSSCache, getRSSItemsCache, setRSSItemsCache } from '../services/cache';
 import { scrapeWebsite } from '../services/scraper';
 import { generateRSS } from '../services/rss-generator';
+import { logger } from '../utils/logger';
+import { ErrorCode } from '../config/types';
 
 const feed = new Hono<{ Bindings: Env }>();
 
@@ -23,10 +25,16 @@ feed.get('/:site_id', async (c) => {
     const config = await getSiteConfig(c.env.RSS_STORE, siteId);
 
     if (!config) {
+      logger.warn('Site config not found', {
+        siteId,
+        endpoint: `/feed/${siteId}`,
+      });
       return c.json(
         {
           error: 'Not Found',
           message: `Site config not found: ${siteId}`,
+          code: ErrorCode.CONFIG_NOT_FOUND,
+          timestamp: new Date().toISOString(),
         },
         404
       );
@@ -62,11 +70,17 @@ feed.get('/:site_id', async (c) => {
       'Content-Type': 'application/rss+xml; charset=utf-8',
     });
   } catch (error) {
-    console.error(`Error generating feed for ${siteId}:`, error);
+    logger.error(`Error generating feed for ${siteId}`, error as Error, {
+      siteId,
+      endpoint: `/feed/${siteId}`,
+    });
 
     // エラー時は古いキャッシュがあれば返す
     const cached = await getRSSCache(c.env.RSS_STORE, siteId);
     if (cached) {
+      logger.info('Serving stale cache after error', {
+        siteId,
+      });
       return c.body(cached, 200, {
         'Content-Type': 'application/rss+xml; charset=utf-8',
         'X-Served-From-Cache': 'true',
@@ -78,6 +92,8 @@ feed.get('/:site_id', async (c) => {
         error: 'Internal Server Error',
         message:
           error instanceof Error ? error.message : 'Failed to generate feed',
+        code: ErrorCode.SCRAPING_FAILED,
+        timestamp: new Date().toISOString(),
       },
       502
     );
@@ -103,11 +119,15 @@ feed.get('/', async (c) => {
       count: sites.length,
     });
   } catch (error) {
-    console.error('Error fetching sites:', error);
+    logger.error('Error fetching sites', error as Error, {
+      endpoint: '/feed',
+    });
     return c.json(
       {
         error: 'Internal Server Error',
         message: 'Failed to fetch sites',
+        code: ErrorCode.INTERNAL_ERROR,
+        timestamp: new Date().toISOString(),
       },
       500
     );
